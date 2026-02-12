@@ -29,3 +29,16 @@ class InvalidJobRequestError(APIException):
             message=f"Invalid job request: {message}",
             status_code=422
         )
+
+
+class TradingAgentsExecutionError(APIException):
+    """Exception raised when TradingAgentsGraph execution fails."""
+
+    def __init__(self, ticker: str, date: str, error: str):
+        super().__init__(
+            message=f"TradingAgents analysis failed for {ticker} on {date}: {error}",
+            status_code=500
+        )
+        self.ticker = ticker
+        self.date = date
+        self.original_error = error
