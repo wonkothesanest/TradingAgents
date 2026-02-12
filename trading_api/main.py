@@ -125,12 +125,11 @@ async def create_job(request: JobRequest) -> JobResponse:
     # Get job data for response
     job = store.get_job(job_id)
 
-    # TODO Phase 2: Trigger Celery task here
-    # task = analyze_stock.delay(job_id, request.ticker, request.date, request.config)
+    # Dispatch Celery task for background execution
+    from trading_api.tasks import analyze_stock
+    task = analyze_stock.delay(job_id, request.ticker, request.date, request.config)
 
-    # TODO Phase 1: Simulate job execution for testing
-    # In a real implementation, this would be handled by Celery worker
-    # For now, jobs remain in PENDING state until manually updated
+    print(f"Job {job_id} dispatched to Celery task {task.id}")
 
     return JobResponse(
         job_id=job["job_id"],

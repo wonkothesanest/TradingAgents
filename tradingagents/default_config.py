@@ -31,4 +31,14 @@ DEFAULT_CONFIG = {
     "tool_vendors": {
         # Example: "get_stock_data": "alpha_vantage",  # Override category default
     },
+    # Celery Configuration
+    "celery_broker_url": os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
+    "celery_result_backend": os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0"),
+    "celery_task_serializer": "json",
+    "celery_result_serializer": "json",
+    "celery_accept_content": ["json"],
+    "celery_task_time_limit": 1800,  # 30 minutes hard limit
+    "celery_task_soft_time_limit": 1500,  # 25 minutes soft limit
+    "celery_worker_prefetch_multiplier": 1,
+    "celery_result_expires": 3600,  # 1 hour
 }

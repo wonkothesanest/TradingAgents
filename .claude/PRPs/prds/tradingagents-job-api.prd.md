@@ -203,7 +203,7 @@ Config error → {"status": "failed", "error": "Invalid configuration: ..."}
 | # | Phase | Description | Status | Parallel | Depends | PRP Plan |
 |---|-------|-------------|--------|----------|---------|----------|
 | 1 | API Core Setup | FastAPI skeleton with 3 endpoints (POST /jobs, GET /jobs/{id}, GET /jobs/{id}/result) | complete | - | - | [api-core-setup.plan.md](../../plans/api-core-setup.plan.md) |
-| 2 | Job Queue Infrastructure | Celery + Redis configuration, worker setup | in-progress | - | 1 | [job-queue-infrastructure.plan.md](../../plans/job-queue-infrastructure.plan.md) |
+| 2 | Job Queue Infrastructure | Celery + Redis configuration, worker setup | complete | - | 1 | [job-queue-infrastructure.plan.md](../../plans/job-queue-infrastructure.plan.md) |
 | 3 | TradingAgents Integration | Worker task that calls TradingAgentsGraph.propagate() | pending | - | 1, 2 | [tradingagents-integration.plan.md](../../plans/tradingagents-integration.plan.md) |
 | 4 | Docker Compose Configuration | API + Worker + Redis + Ollama services with GPU support | pending | - | 1, 2 | [docker-compose-configuration.plan.md](../../plans/docker-compose-configuration.plan.md) |
 | 5 | Configuration System | Per-job config override, env var management, Ollama URL fix | pending | with 6 | 3 | [configuration-system.plan.md](../../plans/configuration-system.plan.md) |
