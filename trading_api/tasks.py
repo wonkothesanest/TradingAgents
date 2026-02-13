@@ -1,7 +1,9 @@
 """Celery tasks for TradingAgents job processing."""
 
+import signal
 from typing import Dict, Any, Optional
 
+from celery.exceptions import SoftTimeLimitExceeded
 from trading_api.celery_app import celery_app
 from trading_api.job_store import get_job_store
 from trading_api.models import JobStatus
@@ -13,6 +15,17 @@ from tradingagents.dataflows.alpha_vantage_common import AlphaVantageRateLimitEr
 
 # API exceptions
 from trading_api.exceptions import TradingAgentsExecutionError
+
+
+def cleanup_on_signal(signum, frame):
+    """Cleanup handler for worker shutdown."""
+    print("Received shutdown signal, cleaning up...")
+    # Close LLM connections, save progress, etc.
+
+
+# Register signal handlers for graceful shutdown
+signal.signal(signal.SIGTERM, cleanup_on_signal)
+signal.signal(signal.SIGINT, cleanup_on_signal)
 
 
 @celery_app.task(bind=True, name="tradingagents.analyze_stock")
@@ -42,6 +55,13 @@ def analyze_stock(
     store = get_job_store()
 
     try:
+        # Log retry attempt
+        retry_count = self.request.retries
+        print(f"Task {self.request.id}: Attempt {retry_count + 1}")
+
+        # Store retry count in job metadata
+        store.update_retry_count(job_id, retry_count)
+
         # Update job status to RUNNING
         store.update_job_status(job_id, JobStatus.RUNNING)
         print(f"Task {self.request.id}: Started analyzing {ticker} for {date}")
@@ -94,23 +114,30 @@ def analyze_stock(
 
         return result
 
-    except AlphaVantageRateLimitError as exc:
-        # Data provider rate limit hit
-        error_msg = f"Alpha Vantage rate limit exceeded: {str(exc)}"
+    except SoftTimeLimitExceeded:
+        # Soft timeout (25 minutes) - attempt graceful shutdown
+        error_msg = "Analysis exceeded 25-minute soft limit, attempting graceful shutdown"
         print(f"Task {self.request.id}: {error_msg}")
-        store.update_job_status(job_id, JobStatus.FAILED, error_msg)
-        raise TradingAgentsExecutionError(ticker, date, error_msg)
+        store.update_job_status(job_id, JobStatus.FAILED, error_msg, error_type="timeout")
+        # Re-raise to let hard limit (30 min) terminate if needed
+        raise
+
+    except AlphaVantageRateLimitError as exc:
+        # Retryable error - don't update to FAILED, let Celery retry
+        print(f"Task {self.request.id}: Rate limit hit, will retry")
+        raise self.retry(exc=exc, countdown=60)  # Retry after 60 seconds
 
     except KeyError as exc:
         # Missing required data in response
         error_msg = f"Missing required data: {str(exc)}"
         print(f"Task {self.request.id}: {error_msg}")
-        store.update_job_status(job_id, JobStatus.FAILED, error_msg)
+        store.update_job_status(job_id, JobStatus.FAILED, error_msg, error_type="data_error")
         raise TradingAgentsExecutionError(ticker, date, error_msg)
 
     except Exception as exc:
         # Any other error (LLM API, network, graph execution)
         error_msg = f"{type(exc).__name__}: {str(exc)}"
+        error_type = "llm_error" if "llm" in error_msg.lower() or "api" in error_msg.lower() else "unknown"
         print(f"Task {self.request.id}: Unexpected error - {error_msg}")
-        store.update_job_status(job_id, JobStatus.FAILED, error_msg)
+        store.update_job_status(job_id, JobStatus.FAILED, error_msg, error_type=error_type)
         raise TradingAgentsExecutionError(ticker, date, error_msg)

@@ -5,6 +5,7 @@ from celery import Celery
 from typing import Optional
 
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.dataflows.alpha_vantage_common import AlphaVantageRateLimitError
 
 
 def create_celery_app() -> Celery:
@@ -35,6 +36,12 @@ def create_celery_app() -> Celery:
         enable_utc=True,
         task_track_started=True,
         broker_connection_retry_on_startup=True,
+        # Retry configuration
+        task_autoretry_for=(AlphaVantageRateLimitError,),
+        task_retry_backoff=True,  # Exponential backoff: 60s, 120s, 240s...
+        task_retry_backoff_max=600,  # Max 10 minutes between retries
+        task_retry_jitter=True,  # Add randomness to prevent thundering herd
+        task_max_retries=3,  # Stop after 3 attempts
     )
 
     # Broker transport options for Redis

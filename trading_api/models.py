@@ -15,6 +15,15 @@ class JobStatus(str, Enum):
     FAILED = "failed"
 
 
+class ErrorType(str, Enum):
+    """Job failure error categories."""
+    TIMEOUT = "timeout"
+    LLM_ERROR = "llm_error"
+    DATA_ERROR = "data_error"
+    INVALID_CONFIG = "invalid_config"
+    UNKNOWN = "unknown"
+
+
 class JobConfigSchema(BaseModel):
     """Validated configuration options for job customization."""
 
@@ -107,6 +116,8 @@ class JobStatusResponse(BaseModel):
     ticker: str = Field(..., description="Stock ticker")
     date: str = Field(..., description="Analysis date")
     error: Optional[str] = Field(None, description="Error message if job failed")
+    error_type: Optional[ErrorType] = Field(None, description="Error category if job failed")
+    retry_count: Optional[int] = Field(None, description="Number of retry attempts")
 
     class Config:
         json_schema_extra = {
@@ -118,7 +129,9 @@ class JobStatusResponse(BaseModel):
                 "completed_at": None,
                 "ticker": "NVDA",
                 "date": "2026-02-12",
-                "error": None
+                "error": None,
+                "error_type": None,
+                "retry_count": 0
             }
         }
 

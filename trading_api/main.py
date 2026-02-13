@@ -1,9 +1,11 @@
 """FastAPI application for TradingAgents job submission and tracking."""
 
+import os
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
+from redis import Redis
 
 from trading_api.models import (
     JobRequest,
@@ -14,6 +16,7 @@ from trading_api.models import (
 )
 from trading_api.job_store import get_job_store
 from trading_api.exceptions import JobNotFoundError, APIException
+from trading_api.celery_app import celery_app
 
 
 @asynccontextmanager
@@ -76,8 +79,39 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy"}
+    """Health check with dependency validation."""
+    health_status = {
+        "status": "healthy",
+        "components": {}
+    }
+
+    # Check Redis
+    try:
+        redis_client = Redis.from_url(
+            os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
+            socket_connect_timeout=2
+        )
+        redis_client.ping()
+        health_status["components"]["redis"] = "up"
+    except Exception as e:
+        health_status["status"] = "unhealthy"
+        health_status["components"]["redis"] = f"down: {str(e)}"
+
+    # Check Celery workers
+    try:
+        inspect = celery_app.control.inspect(timeout=2)
+        active_workers = inspect.ping()
+        if active_workers:
+            health_status["components"]["celery_workers"] = f"{len(active_workers)} active"
+        else:
+            health_status["status"] = "degraded"
+            health_status["components"]["celery_workers"] = "no workers"
+    except Exception as e:
+        health_status["status"] = "degraded"
+        health_status["components"]["celery_workers"] = f"unknown: {str(e)}"
+
+    status_code = 200 if health_status["status"] == "healthy" else 503
+    return JSONResponse(health_status, status_code=status_code)
 
 
 @app.post(
@@ -192,6 +226,8 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
         ticker=job["ticker"],
         date=job["date"],
         error=job["error"],
+        error_type=job.get("error_type"),
+        retry_count=job.get("retry_count", 0),
     )
 
 

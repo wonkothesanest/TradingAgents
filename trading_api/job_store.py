@@ -46,6 +46,8 @@ class JobStore:
             "started_at": None,
             "completed_at": None,
             "error": None,
+            "error_type": None,
+            "retry_count": 0,
             "result": None,
         }
 
@@ -71,7 +73,8 @@ class JobStore:
         self,
         job_id: str,
         status: JobStatus,
-        error: Optional[str] = None
+        error: Optional[str] = None,
+        error_type: Optional[str] = None
     ) -> None:
         """Update job status.
 
@@ -79,6 +82,7 @@ class JobStore:
             job_id: Job identifier
             status: New status
             error: Optional error message for FAILED status
+            error_type: Optional error category for FAILED status
 
         Raises:
             JobNotFoundError: If job ID does not exist
@@ -96,6 +100,26 @@ class JobStore:
 
         if error:
             self._jobs[job_id]["error"] = error
+            self._jobs[job_id]["error_type"] = error_type or "unknown"
+
+    def update_retry_count(
+        self,
+        job_id: str,
+        retry_count: int
+    ) -> None:
+        """Update job retry count.
+
+        Args:
+            job_id: Job identifier
+            retry_count: Number of retry attempts
+
+        Raises:
+            JobNotFoundError: If job ID does not exist
+        """
+        if job_id not in self._jobs:
+            raise JobNotFoundError(job_id)
+
+        self._jobs[job_id]["retry_count"] = retry_count
 
     def set_job_result(
         self,
