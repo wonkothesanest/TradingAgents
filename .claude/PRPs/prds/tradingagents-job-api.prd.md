@@ -208,8 +208,8 @@ Config error → {"status": "failed", "error": "Invalid configuration: ..."}
 | 4 | Docker Compose Configuration | API + Worker + Redis + Ollama services with GPU support | complete | - | 1, 2 | [docker-compose-configuration.plan.md](../../plans/docker-compose-configuration.plan.md) |
 | 5 | Configuration System | Per-job config override, env var management, Ollama URL fix | complete | with 6 | 3 | [configuration-system.plan.md](../../plans/completed/5-configuration-system.plan.md) |
 | 6 | Timeout & Error Handling | 30-min timeout, failure states, health checks | complete | with 5 | 3 | [timeout-error-handling.plan.md](../../plans/timeout-error-handling.plan.md) |
-| 7 | Volume & Results Management | Persistent volumes for cache + results, result format API response | pending | - | 4, 6 | [volume-results-management.plan.md](../../plans/volume-results-management.plan.md) |
-| 8 | Testing & Documentation | Integration tests, API docs, deployment guide | pending | - | 7 | [testing-documentation.plan.md](../../plans/testing-documentation.plan.md) |
+| 7 | Volume & Results Management | Persistent volumes for cache + results, result format API response | complete | - | 4, 6 | [7-volume-results-management.plan.md](../../plans/completed/7-volume-results-management.plan.md) |
+| 8 | Testing & Documentation | Integration tests, API docs, deployment guide | complete | - | 7 | [8-testing-documentation.plan.md](../../plans/completed/8-testing-documentation.plan.md) |
 
 ### Phase Details
 

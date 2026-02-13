@@ -256,6 +256,83 @@ Current setup uses bind mounts for single-machine deployment. When scaling to mu
 - Azure Blob Storage
 - Shared NFS mount
 
+## TradingAgents Job API
+
+Async job API for TradingAgents multi-agent trading analysis.
+
+### Features
+
+- 🚀 Async job queue with configurable concurrency
+- 🐳 Docker Compose deployment with GPU support
+- 🤖 Multi-provider LLM support (OpenAI, Anthropic, Ollama, etc.)
+- 📊 Full analyst reports with trading decisions
+- 💾 Persistent results across container restarts
+- 🔍 OpenAPI docs at `/docs`
+
+### Quick Start
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed instructions.
+
+```bash
+# Configure
+cp .env.example .env
+
+# Start services
+docker-compose up -d
+
+# Submit job
+curl -X POST http://localhost:8000/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"ticker": "NVDA", "date": "2024-05-10"}'
+
+# Check status
+curl http://localhost:8000/jobs/{job_id}
+
+# Get result
+curl http://localhost:8000/jobs/{job_id}/result
+```
+
+### API Documentation
+
+Interactive docs: http://localhost:8000/docs
+OpenAPI spec: http://localhost:8000/openapi.json
+
+### Testing
+
+```bash
+# Install test dependencies
+pip install -e ".[test]"
+
+# Run integration tests
+pytest tests/integration/ -v
+
+# Run load tests
+pytest tests/integration/test_load.py -v -m slow
+
+# Run specific test
+pytest tests/integration/test_job_flow.py::test_submit_poll_retrieve_flow -v
+```
+
+### Troubleshooting
+
+See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for common issues.
+
+### Architecture
+
+```
+N8N Workflow
+     ↓
+FastAPI (Port 8000)
+     ↓
+Redis Queue
+     ↓
+Celery Workers (concurrency=2)
+     ↓
+TradingAgentsGraph
+     ↓
+Ollama LLM (GPU)
+```
+
 ## Contributing
 
 We welcome contributions from the community! Whether it's fixing a bug, improving documentation, or suggesting a new feature, your input helps make this project better. If you are interested in this line of research, please consider joining our open-source financial AI research community [Tauric Research](https://tauric.ai/).
