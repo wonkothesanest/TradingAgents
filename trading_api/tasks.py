@@ -1,6 +1,9 @@
 """Celery tasks for TradingAgents job processing."""
 
+import json
+import os
 import signal
+from pathlib import Path
 from typing import Dict, Any, Optional
 
 from celery.exceptions import SoftTimeLimitExceeded
@@ -84,6 +87,21 @@ def analyze_stock(
 
         print(f"Task {self.request.id}: Analysis complete - Decision: {decision}")
 
+        # Write results to filesystem
+        results_base = Path(os.getenv("RESULTS_DIR", "/data/results"))
+        ticker_dir = results_base / ticker / date.replace("-", "")
+        ticker_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write full state dict
+        state_file = ticker_dir / "state.json"
+        with open(state_file, "w") as f:
+            json.dump(final_state, f, indent=2, default=str)
+
+        # Write decision
+        decision_file = ticker_dir / "decision.txt"
+        with open(decision_file, "w") as f:
+            f.write(decision)
+
         # Extract individual analyst reports from final_state
         reports = {
             "market": final_state.get("market_report", ""),
@@ -91,6 +109,14 @@ def analyze_stock(
             "news": final_state.get("news_report", ""),
             "fundamentals": final_state.get("fundamentals_report", ""),
         }
+
+        # Write individual reports
+        for report_name, content in reports.items():
+            report_file = ticker_dir / f"{report_name}_report.txt"
+            with open(report_file, "w") as f:
+                f.write(content)
+
+        print(f"Task {self.request.id}: Results written to {ticker_dir}")
 
         # Build result dict
         result = {

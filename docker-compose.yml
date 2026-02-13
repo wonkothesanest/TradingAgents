@@ -34,8 +34,8 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./results:/app/results
-      - cache_data:/app/tradingagents/dataflows/data_cache
+      - ./results:/data/results
+      - ./tradingagents/dataflows/data_cache:/app/tradingagents/dataflows/data_cache
     restart: unless-stopped
     networks:
       - tradingagents
@@ -63,8 +63,8 @@ services:
       ollama:
         condition: service_healthy
     volumes:
-      - ./results:/app/results
-      - cache_data:/app/tradingagents/dataflows/data_cache
+      - ./results:/data/results
+      - ./tradingagents/dataflows/data_cache:/app/tradingagents/dataflows/data_cache
     restart: unless-stopped
     networks:
       - tradingagents
@@ -106,5 +106,4 @@ networks:
 
 volumes:
   redis_data:
-  cache_data:
   ollama_models:

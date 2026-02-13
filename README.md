@@ -198,6 +198,64 @@ print(decision)
 
 See `tradingagents/default_config.py` for all configuration options.
 
+## Storage Management
+
+### Storage Locations
+
+**Results** (`./results/`):
+- Host directory bind-mounted to containers at `/data/results`
+- Structured as: `./results/{ticker}/{YYYYMMDD}/`
+- Contains: state.json, decision.txt, *_report.txt files
+- Directly accessible from host filesystem
+- Persists across container restarts
+
+**Cache** (`./tradingagents/dataflows/data_cache/`):
+- Host directory bind-mounted to containers
+- Market data cache (yfinance CSV files)
+- Reduces API calls for repeated analysis
+- Directly accessible from host filesystem
+
+### Accessing Results
+
+Results are directly accessible on your host filesystem:
+
+```bash
+# List all results
+ls -lah results/
+
+# View specific analysis
+cat results/NVDA/20260212/decision.txt
+cat results/NVDA/20260212/market_report.txt
+
+# View full state
+jq . results/NVDA/20260212/state.json
+```
+
+### Cleanup
+
+**Remove specific job results:**
+```bash
+rm -rf results/NVDA/20260212
+```
+
+**Clear all results (WARNING: irreversible):**
+```bash
+rm -rf results/*
+```
+
+**Clear cache only:**
+```bash
+rm -rf tradingagents/dataflows/data_cache/*
+```
+
+### Scaling Considerations
+
+Current setup uses bind mounts for single-machine deployment. When scaling to multiple containers/machines, migrate to cloud storage:
+- AWS S3
+- Google Cloud Storage
+- Azure Blob Storage
+- Shared NFS mount
+
 ## Contributing
 
 We welcome contributions from the community! Whether it's fixing a bug, improving documentation, or suggesting a new feature, your input helps make this project better. If you are interested in this line of research, please consider joining our open-source financial AI research community [Tauric Research](https://tauric.ai/).
