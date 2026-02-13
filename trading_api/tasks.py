@@ -118,10 +118,16 @@ def analyze_stock(
 
         print(f"Task {self.request.id}: Results written to {ticker_dir}")
 
-        # Build result dict
+        # Convert final_state to JSON-serializable format
+        # Use json.loads(json.dumps()) with default=str to handle non-serializable objects
+        serializable_state = json.loads(
+            json.dumps(final_state, default=str)
+        )
+
+        # Build result dict with serializable data only
         result = {
             "decision": decision,
-            "final_state": final_state,
+            "final_state": serializable_state,
             "reports": reports,
         }
 
