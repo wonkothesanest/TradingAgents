@@ -115,11 +115,15 @@ async def create_job(request: JobRequest) -> JobResponse:
     """
     store = get_job_store()
 
+    # Pydantic already validated config schema
+    # Convert to dict for storage
+    config_dict = request.config.model_dump() if request.config else None
+
     # Create job in store
     job_id = store.create_job(
         ticker=request.ticker,
         date=request.date,
-        config=request.config,
+        config=config_dict,
     )
 
     # Get job data for response
@@ -127,7 +131,7 @@ async def create_job(request: JobRequest) -> JobResponse:
 
     # Dispatch Celery task for background execution
     from trading_api.tasks import analyze_stock
-    task = analyze_stock.delay(job_id, request.ticker, request.date, request.config)
+    task = analyze_stock.delay(job_id, request.ticker, request.date, config_dict)
 
     print(f"Job {job_id} dispatched to Celery task {task.id}")
 

@@ -1,9 +1,10 @@
 """Pydantic models for API request/response validation."""
 
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
+from typing_extensions import Literal
 
 
 class JobStatus(str, Enum):
@@ -12,6 +13,34 @@ class JobStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class JobConfigSchema(BaseModel):
+    """Validated configuration options for job customization."""
+
+    # LLM Configuration
+    llm_provider: Optional[Literal["openai", "anthropic", "google", "xai", "ollama", "openrouter"]] = None
+    deep_think_llm: Optional[str] = Field(None, max_length=100)
+    quick_think_llm: Optional[str] = Field(None, max_length=100)
+    backend_url: Optional[str] = Field(None, pattern=r'^https?://.+')
+
+    # Analysis Configuration
+    max_debate_rounds: Optional[int] = Field(None, ge=1, le=5)
+    max_risk_discuss_rounds: Optional[int] = Field(None, ge=1, le=3)
+    selected_analysts: Optional[List[Literal["market", "social", "news", "fundamentals"]]] = None
+
+    # Data Vendor Configuration
+    data_vendors: Optional[Dict[str, str]] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "llm_provider": "openai",
+                "deep_think_llm": "gpt-4",
+                "max_debate_rounds": 2,
+                "selected_analysts": ["market", "news"]
+            }
+        }
 
 
 class JobRequest(BaseModel):
@@ -28,7 +57,7 @@ class JobRequest(BaseModel):
         pattern=r'^\d{4}-\d{2}-\d{2}$',
         description="Analysis date in YYYY-MM-DD format"
     )
-    config: Optional[Dict[str, Any]] = Field(
+    config: Optional[JobConfigSchema] = Field(
         default=None,
         description="Optional configuration overrides for this job"
     )
