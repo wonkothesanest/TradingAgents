@@ -205,7 +205,7 @@ Config error → {"status": "failed", "error": "Invalid configuration: ..."}
 | 1 | API Core Setup | FastAPI skeleton with 3 endpoints (POST /jobs, GET /jobs/{id}, GET /jobs/{id}/result) | complete | - | - | [api-core-setup.plan.md](../../plans/api-core-setup.plan.md) |
 | 2 | Job Queue Infrastructure | Celery + Redis configuration, worker setup | complete | - | 1 | [job-queue-infrastructure.plan.md](../../plans/job-queue-infrastructure.plan.md) |
 | 3 | TradingAgents Integration | Worker task that calls TradingAgentsGraph.propagate() | complete | - | 1, 2 | [3-tradingagents-integration.plan.md](../../plans/3-tradingagents-integration.plan.md) |
-| 4 | Docker Compose Configuration | API + Worker + Redis + Ollama services with GPU support | pending | - | 1, 2 | [docker-compose-configuration.plan.md](../../plans/docker-compose-configuration.plan.md) |
+| 4 | Docker Compose Configuration | API + Worker + Redis + Ollama services with GPU support | complete | - | 1, 2 | [docker-compose-configuration.plan.md](../../plans/docker-compose-configuration.plan.md) |
 | 5 | Configuration System | Per-job config override, env var management, Ollama URL fix | pending | with 6 | 3 | [configuration-system.plan.md](../../plans/configuration-system.plan.md) |
 | 6 | Timeout & Error Handling | 30-min timeout, failure states, health checks | pending | with 5 | 3 | [timeout-error-handling.plan.md](../../plans/timeout-error-handling.plan.md) |
 | 7 | Volume & Results Management | Persistent volumes for cache + results, result format API response | pending | - | 4, 6 | [volume-results-management.plan.md](../../plans/volume-results-management.plan.md) |

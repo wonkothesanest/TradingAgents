@@ -1,0 +1,110 @@
+services:
+  # Redis broker and result backend
+  redis:
+    image: redis:7-alpine
+    container_name: tradingagents-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --maxmemory 512mb --maxmemory-policy noeviction
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - tradingagents
+
+  # FastAPI application
+  api:
+    build: .
+    container_name: tradingagents-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_HOST=redis
+      - OLLAMA_BASE_URL=http://ollama:11434
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./results:/app/results
+      - cache_data:/app/tradingagents/dataflows/data_cache
+    restart: unless-stopped
+    networks:
+      - tradingagents
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Celery worker
+  worker:
+    build: .
+    container_name: tradingagents-worker
+    command: celery -A trading_api.celery_app worker --loglevel=info --concurrency=2 --time-limit=1800 --soft-time-limit=1500 --max-tasks-per-child=50
+    env_file:
+      - .env
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_HOST=redis
+      - OLLAMA_BASE_URL=http://ollama:11434
+    depends_on:
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ./results:/app/results
+      - cache_data:/app/tradingagents/dataflows/data_cache
+    restart: unless-stopped
+    networks:
+      - tradingagents
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Ollama LLM inference server
+  ollama:
+    image: ollama/ollama:latest
+    container_name: tradingagents-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - tradingagents
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  tradingagents:
+    driver: bridge
+
+volumes:
+  redis_data:
+  cache_data:
+  ollama_models:
