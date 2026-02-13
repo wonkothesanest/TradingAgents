@@ -2,7 +2,7 @@
 
 import os
 from contextlib import asynccontextmanager
-from typing import Dict, Any
+from typing import Dict, Any, List
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
 from redis import Redis
@@ -71,6 +71,7 @@ async def root():
         "status": "operational",
         "endpoints": {
             "submit_job": "POST /jobs",
+            "list_jobs": "GET /jobs",
             "get_status": "GET /jobs/{job_id}",
             "get_result": "GET /jobs/{job_id}/result",
         },
@@ -296,6 +297,65 @@ async def get_job_result(job_id: str) -> JobResultResponse:
         final_state=result["final_state"],
         reports=result["reports"],
     )
+
+
+@app.get(
+    "/jobs",
+    response_model=List[JobStatusResponse],
+    summary="List all jobs",
+    description="Retrieve all jobs sorted by status (running → pending → failed → completed). Returns job metadata without full results.",
+)
+async def list_jobs() -> List[JobStatusResponse]:
+    """List all jobs, sorted by status.
+
+    Returns:
+        List of JobStatusResponse objects sorted by status priority
+
+    Example:
+        GET /jobs
+
+        Response (200 OK):
+        [
+            {
+                "job_id": "abc-123",
+                "status": "running",
+                "created_at": "2026-02-12T10:30:00Z",
+                "started_at": "2026-02-12T10:30:05Z",
+                "completed_at": null,
+                "ticker": "NVDA",
+                "date": "2026-02-12",
+                "error": null,
+                "error_type": null,
+                "retry_count": 0
+            },
+            {
+                "job_id": "def-456",
+                "status": "pending",
+                ...
+            }
+        ]
+    """
+    store = get_job_store()
+
+    # Get all jobs from store
+    jobs = store.list_jobs()
+
+    # Convert to response models
+    return [
+        JobStatusResponse(
+            job_id=job["job_id"],
+            status=job["status"],
+            created_at=job["created_at"],
+            started_at=job["started_at"],
+            completed_at=job["completed_at"],
+            ticker=job["ticker"],
+            date=job["date"],
+            error=job["error"],
+            error_type=job.get("error_type"),
+            retry_count=job.get("retry_count", 0),
+        )
+        for job in jobs
+    ]
 
 
 if __name__ == "__main__":

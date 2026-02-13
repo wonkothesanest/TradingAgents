@@ -4,7 +4,7 @@ import json
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from redis import Redis
 from trading_api.models import JobStatus
 from trading_api.exceptions import JobNotFoundError
@@ -126,6 +126,63 @@ class JobStore:
         }
 
         return result
+
+    def list_jobs(self) -> List[Dict[str, Any]]:
+        """List all jobs, sorted by status.
+
+        Returns jobs ordered by status priority (running → pending → failed → completed),
+        with secondary sort by created_at timestamp within each status group.
+
+        Returns:
+            List of job data dictionaries
+
+        Note:
+            Uses Redis SCAN for non-blocking key enumeration. May take several seconds
+            for large job counts (1000+ jobs).
+        """
+        jobs = []
+        seen = set()  # Deduplicate keys (SCAN may return duplicates)
+
+        # Use SCAN iterator with high count for performance
+        for key in self.redis.scan_iter(match="tradingagents:job:*", count=1000):
+            if key in seen:
+                continue
+            seen.add(key)
+
+            # Fetch job data
+            job_data = self.redis.hgetall(key)
+
+            # Skip if job expired between SCAN and HGETALL
+            if not job_data:
+                continue
+
+            # Convert to dict using same pattern as get_job()
+            job = {
+                "job_id": job_data["job_id"],
+                "ticker": job_data["ticker"],
+                "date": job_data["date"],
+                "config": json.loads(job_data["config"]) if job_data.get("config") else None,
+                "status": job_data["status"],
+                "created_at": job_data["created_at"],
+                "started_at": job_data.get("started_at") or None,
+                "completed_at": job_data.get("completed_at") or None,
+                "error": job_data.get("error") or None,
+                "error_type": job_data.get("error_type") or None,
+                "retry_count": int(job_data.get("retry_count", 0)),
+            }
+            jobs.append(job)
+
+        # Sort by status priority, then by created_at
+        status_order = {
+            JobStatus.RUNNING: 0,
+            JobStatus.PENDING: 1,
+            JobStatus.FAILED: 2,
+            JobStatus.COMPLETED: 3,
+        }
+
+        jobs.sort(key=lambda j: (status_order.get(j["status"], 999), j["created_at"]))
+
+        return jobs
 
     def update_job_status(
         self,
