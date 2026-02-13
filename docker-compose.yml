@@ -4,7 +4,7 @@ services:
     image: redis:7-alpine
     container_name: tradingagents-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     command: redis-server --maxmemory 512mb --maxmemory-policy noeviction
@@ -22,7 +22,7 @@ services:
     build: .
     container_name: tradingagents-api
     ports:
-      - "8000:8000"
+      - "8123:8000"
     env_file:
       - .env
     environment:
@@ -49,6 +49,8 @@ services:
   worker:
     build: .
     container_name: tradingagents-worker
+    ports:
+      - "8124:8000"
     command: celery -A trading_api.celery_app worker --loglevel=info --concurrency=2 --time-limit=1800 --soft-time-limit=1500 --max-tasks-per-child=50
     env_file:
       - .env
@@ -81,7 +83,7 @@ services:
     image: ollama/ollama:latest
     container_name: tradingagents-ollama
     ports:
-      - "11434:11434"
+      - "11535:11434"
     volumes:
       - ollama_models:/root/.ollama
     restart: unless-stopped
@@ -95,10 +97,11 @@ services:
               count: 1
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
 networks:
   tradingagents:

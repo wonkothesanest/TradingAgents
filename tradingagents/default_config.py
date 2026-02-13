@@ -8,14 +8,14 @@ DEFAULT_CONFIG = {
         "dataflows/data_cache",
     ),
     # LLM settings
-    "llm_provider": "openai",
-    "deep_think_llm": "gpt-5.2",
-    "quick_think_llm": "gpt-5-mini",
+    "llm_provider": "ollama",
+    "deep_think_llm": "qwen3:latest",
+    "quick_think_llm": "qwen3:latest",
     "backend_url": os.getenv("BACKEND_URL", "https://api.openai.com/v1"),
-    "ollama_base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+    "ollama_base_url": os.getenv("OLLAMA_BASE_URL", "http://ollama:11434"),
     # Provider-specific thinking configuration
-    "google_thinking_level": None,      # "high", "minimal", etc.
-    "openai_reasoning_effort": None,    # "medium", "high", "low"
+    "google_thinking_level": "minimal",      # "high", "minimal", etc.
+    "openai_reasoning_effort": "low",    # "medium", "high", "low"
     # Debate and discussion settings
     "max_debate_rounds": 1,
     "max_risk_discuss_rounds": 1,
@@ -33,8 +33,8 @@ DEFAULT_CONFIG = {
         # Example: "get_stock_data": "alpha_vantage",  # Override category default
     },
     # Celery Configuration
-    "celery_broker_url": os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
-    "celery_result_backend": os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0"),
+    "celery_broker_url": os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
+    "celery_result_backend": os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0"),
     "celery_task_serializer": "json",
     "celery_result_serializer": "json",
     "celery_accept_content": ["json"],
