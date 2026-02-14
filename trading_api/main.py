@@ -2,8 +2,8 @@
 
 import os
 from contextlib import asynccontextmanager
-from typing import Dict, Any, List
-from fastapi import FastAPI, HTTPException, status
+from typing import Dict, Any, List, Optional
+from fastapi import FastAPI, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 from redis import Redis
 
@@ -13,6 +13,7 @@ from trading_api.models import (
     JobStatusResponse,
     JobResultResponse,
     JobStatus,
+    ErrorType,
 )
 from trading_api.job_store import get_job_store
 from trading_api.exceptions import JobNotFoundError, APIException
@@ -73,7 +74,7 @@ async def root():
             "health": "GET /health",
             "celery_inspect": "GET /celery",
             "submit_job": "POST /jobs",
-            "list_jobs": "GET /jobs",
+            "list_jobs": "GET /jobs?error_type={optional}",
             "check_orphaned": "GET /jobs/orphaned",
             "cleanup_jobs": "POST /jobs/cleanup",
             "get_status": "GET /jobs/{job_id}",
@@ -417,6 +418,7 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
         error=job["error"],
         error_type=job.get("error_type"),
         retry_count=job.get("retry_count", 0),
+        run_time=job.get("run_time"),
     )
 
 
@@ -491,16 +493,26 @@ async def get_job_result(job_id: str) -> JobResultResponse:
     "/jobs",
     response_model=List[JobStatusResponse],
     summary="List all jobs",
-    description="Retrieve all jobs sorted by status (running → pending → failed → completed). Returns job metadata without full results.",
+    description="Retrieve all jobs sorted by status (running → pending → failed → completed). Optionally filter by error type. Returns job metadata without full results.",
 )
-async def list_jobs() -> List[JobStatusResponse]:
+async def list_jobs(
+    error_type: Optional[ErrorType] = Query(
+        None,
+        description="Filter jobs by error type (timeout, llm_error, data_error, worker_lost, invalid_config, unknown)"
+    )
+) -> List[JobStatusResponse]:
     """List all jobs, sorted by status.
+
+    Args:
+        error_type: Optional filter to only return jobs with this specific error type
 
     Returns:
         List of JobStatusResponse objects sorted by status priority
 
     Example:
         GET /jobs
+        GET /jobs?error_type=timeout
+        GET /jobs?error_type=llm_error
 
         Response (200 OK):
         [
@@ -525,8 +537,8 @@ async def list_jobs() -> List[JobStatusResponse]:
     """
     store = get_job_store()
 
-    # Get all jobs from store
-    jobs = store.list_jobs()
+    # Get jobs from store with optional filter
+    jobs = store.list_jobs(error_type=error_type)
 
     # Convert to response models
     return [
@@ -541,6 +553,7 @@ async def list_jobs() -> List[JobStatusResponse]:
             error=job["error"],
             error_type=job.get("error_type"),
             retry_count=job.get("retry_count", 0),
+            run_time=job.get("run_time"),
         )
         for job in jobs
     ]

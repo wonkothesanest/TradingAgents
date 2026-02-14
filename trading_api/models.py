@@ -21,6 +21,7 @@ class ErrorType(str, Enum):
     LLM_ERROR = "llm_error"
     DATA_ERROR = "data_error"
     WORKER_LOST = "worker_lost"
+    WORKER_SHUTDOWN = "worker_shutdown"
     INVALID_CONFIG = "invalid_config"
     UNKNOWN = "unknown"
 
@@ -119,6 +120,7 @@ class JobStatusResponse(BaseModel):
     error: Optional[str] = Field(None, description="Error message if job failed")
     error_type: Optional[ErrorType] = Field(None, description="Error category if job failed")
     retry_count: Optional[int] = Field(None, description="Number of retry attempts")
+    run_time: Optional[str] = Field(None, description="Job run time in H:MM:SS format (null if not started)")
 
     class Config:
         json_schema_extra = {

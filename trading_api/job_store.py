@@ -46,6 +46,34 @@ class JobStore:
         """
         return f"tradingagents:job:{job_id}"
 
+    def _calculate_run_time(self, started_at: Optional[str], completed_at: Optional[str]) -> Optional[str]:
+        """Calculate job run time in HH:MM:SS format.
+
+        Args:
+            started_at: ISO format timestamp when job started
+            completed_at: ISO format timestamp when job completed (or None if still running)
+
+        Returns:
+            Run time formatted as "H:MM:SS", or None if job hasn't started
+        """
+        if not started_at:
+            return None
+
+        started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+
+        if completed_at:
+            completed = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+            total_seconds = int((completed - started).total_seconds())
+        else:
+            now = datetime.now(timezone.utc)
+            total_seconds = int((now - started).total_seconds())
+
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+
     def create_job(
         self,
         ticker: str,
@@ -112,6 +140,9 @@ class JobStore:
             raise JobNotFoundError(job_id)
 
         # Convert stored strings back to proper types
+        started_at = job_data.get("started_at") or None
+        completed_at = job_data.get("completed_at") or None
+
         result = {
             "job_id": job_data["job_id"],
             "ticker": job_data["ticker"],
@@ -119,21 +150,24 @@ class JobStore:
             "config": json.loads(job_data["config"]) if job_data.get("config") else None,
             "status": job_data["status"],
             "created_at": job_data["created_at"],
-            "started_at": job_data.get("started_at") or None,
-            "completed_at": job_data.get("completed_at") or None,
+            "started_at": started_at,
+            "completed_at": completed_at,
             "last_heartbeat": job_data.get("last_heartbeat") or None,
             "error": job_data.get("error") or None,
             "error_type": job_data.get("error_type") or None,
             "retry_count": int(job_data.get("retry_count", 0)),
+            "run_time": self._calculate_run_time(started_at, completed_at),
         }
 
         return result
 
-    def list_jobs(self) -> List[Dict[str, Any]]:
-        """List all jobs, sorted by status.
+    def list_jobs(self, error_type: Optional[ErrorType] = None) -> List[Dict[str, Any]]:
+        """List all jobs, sorted by creation time.
 
-        Returns jobs ordered by status priority (running → pending → failed → completed),
-        with secondary sort by created_at timestamp within each status group.
+        Returns jobs ordered by created_at timestamp (oldest first).
+
+        Args:
+            error_type: Optional filter to only return jobs with this specific error type
 
         Returns:
             List of job data dictionaries
@@ -159,6 +193,9 @@ class JobStore:
                 continue
 
             # Convert to dict using same pattern as get_job()
+            started_at = job_data.get("started_at") or None
+            completed_at = job_data.get("completed_at") or None
+
             job = {
                 "job_id": job_data["job_id"],
                 "ticker": job_data["ticker"],
@@ -166,24 +203,24 @@ class JobStore:
                 "config": json.loads(job_data["config"]) if job_data.get("config") else None,
                 "status": job_data["status"],
                 "created_at": job_data["created_at"],
-                "started_at": job_data.get("started_at") or None,
-                "completed_at": job_data.get("completed_at") or None,
+                "started_at": started_at,
+                "completed_at": completed_at,
                 "last_heartbeat": job_data.get("last_heartbeat") or None,
                 "error": job_data.get("error") or None,
                 "error_type": job_data.get("error_type") or None,
                 "retry_count": int(job_data.get("retry_count", 0)),
+                "run_time": self._calculate_run_time(started_at, completed_at),
             }
+
+            # Apply error_type filter if specified
+            if error_type is not None:
+                if job["error_type"] != error_type:
+                    continue
+
             jobs.append(job)
 
-        # Sort by status priority, then by created_at
-        status_order = {
-            JobStatus.RUNNING: 0,
-            JobStatus.PENDING: 1,
-            JobStatus.FAILED: 2,
-            JobStatus.COMPLETED: 3,
-        }
-
-        jobs.sort(key=lambda j: (status_order.get(j["status"], 999), j["created_at"]))
+        # Sort by created_at
+        jobs.sort(key=lambda j: j["created_at"], reverse=True)
 
         return jobs
 
@@ -288,6 +325,9 @@ class JobStore:
 
         Helper method to convert Redis string values to proper types.
         """
+        started_at = job_data.get("started_at") or None
+        completed_at = job_data.get("completed_at") or None
+
         return {
             "job_id": job_data["job_id"],
             "ticker": job_data["ticker"],
@@ -295,12 +335,13 @@ class JobStore:
             "config": json.loads(job_data["config"]) if job_data.get("config") else None,
             "status": job_data["status"],
             "created_at": job_data["created_at"],
-            "started_at": job_data.get("started_at") or None,
-            "completed_at": job_data.get("completed_at") or None,
+            "started_at": started_at,
+            "completed_at": completed_at,
             "last_heartbeat": job_data.get("last_heartbeat") or None,
             "error": job_data.get("error") or None,
             "error_type": job_data.get("error_type") or None,
             "retry_count": int(job_data.get("retry_count", 0)),
+            "run_time": self._calculate_run_time(started_at, completed_at),
         }
 
     def cleanup_orphaned_jobs(self, celery_active_job_ids: set) -> int:

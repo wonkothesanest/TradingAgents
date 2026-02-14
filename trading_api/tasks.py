@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 from celery.exceptions import SoftTimeLimitExceeded
 from trading_api.celery_app import celery_app
 from trading_api.job_store import get_job_store
-from trading_api.models import JobStatus
+from trading_api.models import ErrorType, JobStatus
 
 # TradingAgents imports
 from tradingagents.graph.trading_graph import TradingAgentsGraph
@@ -185,7 +185,7 @@ def analyze_stock(
         # Soft timeout (25 minutes) - attempt graceful shutdown
         error_msg = "Analysis exceeded 25-minute soft limit, attempting graceful shutdown"
         print(f"Task {self.request.id}: {error_msg}")
-        _safe_update_status(store, job_id, JobStatus.FAILED, error_msg, error_type="timeout")
+        _safe_update_status(store, job_id, JobStatus.FAILED, error_msg, error_type=ErrorType.TIMEOUT)
         # Re-raise to let hard limit (30 min) terminate if needed
         raise
 
@@ -198,14 +198,14 @@ def analyze_stock(
         # Missing required data in response
         error_msg = f"Missing required data: {str(exc)}"
         print(f"Task {self.request.id}: {error_msg}")
-        _safe_update_status(store, job_id, JobStatus.FAILED, error_msg, error_type="data_error")
+        _safe_update_status(store, job_id, JobStatus.FAILED, error_msg, error_type=ErrorType.DATA_ERROR)
         raise TradingAgentsExecutionError(ticker, date, error_msg)
 
     except (SystemExit, KeyboardInterrupt):
         # Worker shutdown - mark as failed
         error_msg = "Worker shutdown during execution"
         print(f"Task {self.request.id}: {error_msg}")
-        _safe_update_status(store, job_id, JobStatus.FAILED, error_msg, error_type="worker_shutdown")
+        _safe_update_status(store, job_id, JobStatus.FAILED, error_msg, error_type=ErrorType.WORKER_SHUTDOWN)
         raise
 
     except Exception as exc:
@@ -215,7 +215,7 @@ def analyze_stock(
         except:
             error_msg = f"{type(exc).__name__}: <error converting to string>"
 
-        error_type = "llm_error" if "llm" in error_msg.lower() or "api" in error_msg.lower() else "unknown"
+        error_type = ErrorType.LLM_ERROR if "llm" in error_msg.lower() or "api" in error_msg.lower() else ErrorType.UNKNOWN
         print(f"Task {self.request.id}: Unexpected error - {error_msg}")
         _safe_update_status(store, job_id, JobStatus.FAILED, error_msg, error_type=error_type)
         raise TradingAgentsExecutionError(ticker, date, error_msg)
@@ -235,7 +235,7 @@ def analyze_stock(
                         job_id,
                         JobStatus.FAILED,
                         "Task ended abnormally (caught in finally block)",
-                        error_type="abnormal_exit"
+                        error_type=ErrorType.UNKNOWN
                     )
             except Exception as e:
                 print(f"SAFETY NET: Failed to check/update status in finally block: {e}")
