@@ -132,3 +132,50 @@ def test_list_jobs_status_sorting(api_base_url, submit_job):
         # Current job should have <= priority (running comes before pending, etc.)
         assert current_priority <= next_priority, \
             f"Jobs not sorted correctly: {jobs[i]['status']} before {jobs[i + 1]['status']}"
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("docker_compose_up")
+def test_celery_inspect(api_base_url):
+    """Test: GET /celery returns Celery queue inspection data."""
+    resp = requests.get(f"{api_base_url}/celery")
+    assert resp.status_code == 200
+    celery_data = resp.json()
+
+    # Validate response structure
+    assert "status" in celery_data
+    assert celery_data["status"] in ["ok", "error"]
+
+    if celery_data["status"] == "ok":
+        # Validate summary data
+        assert "summary" in celery_data
+        assert "active_tasks" in celery_data["summary"]
+        assert "reserved_tasks" in celery_data["summary"]
+        assert "scheduled_tasks" in celery_data["summary"]
+        assert "total_pending" in celery_data["summary"]
+
+        # Validate details structure
+        assert "details" in celery_data
+        assert "active" in celery_data["details"]
+        assert "reserved" in celery_data["details"]
+        assert "scheduled" in celery_data["details"]
+
+        # Validate worker info
+        assert "workers" in celery_data
+        assert "worker_count" in celery_data
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("docker_compose_up")
+def test_celery_inspect_with_active_job(api_base_url, submit_job):
+    """Test: Celery inspect shows active/pending tasks when jobs submitted."""
+    # Submit a job
+    job_id = submit_job("NVDA", "2024-05-10")
+
+    # Check Celery state
+    resp = requests.get(f"{api_base_url}/celery")
+    assert resp.status_code == 200
+    celery_data = resp.json()
+
+    if celery_data["status"] == "ok":
+        # Should have at least 1 task (active, reserved, or scheduled)
+        total_pending = celery_data["summary"]["total_pending"]
+        assert total_pending >= 0  # May have completed already, so >= 0

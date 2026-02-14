@@ -70,8 +70,12 @@ async def root():
         "version": "0.1.0",
         "status": "operational",
         "endpoints": {
+            "health": "GET /health",
+            "celery_inspect": "GET /celery",
             "submit_job": "POST /jobs",
             "list_jobs": "GET /jobs",
+            "check_orphaned": "GET /jobs/orphaned",
+            "cleanup_jobs": "POST /jobs/cleanup",
             "get_status": "GET /jobs/{job_id}",
             "get_result": "GET /jobs/{job_id}/result",
         },
@@ -113,6 +117,190 @@ async def health_check():
 
     status_code = 200 if health_status["status"] == "healthy" else 503
     return JSONResponse(health_status, status_code=status_code)
+
+
+@app.get("/celery")
+async def celery_inspect():
+    """Inspect Celery queue and worker state.
+
+    Returns detailed information about:
+    - Active tasks (currently executing on workers)
+    - Reserved tasks (claimed by workers, waiting to execute)
+    - Scheduled tasks (in queue, not yet claimed)
+    - Registered tasks (available task types)
+    - Worker statistics and status
+
+    Useful for debugging job execution and monitoring queue depth.
+    """
+    try:
+        inspect = celery_app.control.inspect(timeout=2)
+
+        # Get various queue states
+        active = inspect.active() or {}
+        reserved = inspect.reserved() or {}
+        scheduled = inspect.scheduled() or {}
+        registered = inspect.registered() or {}
+        stats = inspect.stats() or {}
+
+        # Count total tasks across all workers
+        total_active = sum(len(tasks) for tasks in active.values())
+        total_reserved = sum(len(tasks) for tasks in reserved.values())
+        total_scheduled = sum(len(tasks) for tasks in scheduled.values())
+
+        return {
+            "status": "ok",
+            "workers": list(stats.keys()),
+            "worker_count": len(stats),
+            "summary": {
+                "active_tasks": total_active,
+                "reserved_tasks": total_reserved,
+                "scheduled_tasks": total_scheduled,
+                "total_pending": total_active + total_reserved + total_scheduled
+            },
+            "details": {
+                "active": active,
+                "reserved": reserved,
+                "scheduled": scheduled,
+                "registered_tasks": registered,
+                "worker_stats": stats
+            }
+        }
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "error": str(e),
+                "message": "Failed to inspect Celery. Workers may be down or unreachable."
+            }
+        )
+
+
+@app.get("/jobs/orphaned")
+async def check_orphaned_jobs():
+    """Check for orphaned jobs (PRIMARY detection method).
+
+    Cross-references Redis job store with Celery's active tasks.
+    Jobs marked as 'running' in Redis but not in Celery are orphaned
+    (worker crashed, killed, or lost connection).
+
+    This is much faster and more accurate than heartbeat-based detection.
+
+    Returns:
+        List of orphaned jobs
+    """
+    store = get_job_store()
+
+    # Get active job IDs from Celery
+    try:
+        inspect = celery_app.control.inspect(timeout=2)
+        active = inspect.active() or {}
+        reserved = inspect.reserved() or {}
+        scheduled = inspect.scheduled() or {}
+
+        # Extract job_ids from Celery tasks
+        celery_job_ids = set()
+
+        for tasks in active.values():
+            for task in tasks:
+                # Task args contain: [job_id, ticker, date, config]
+                if task.get("args") and len(task["args"]) > 0:
+                    celery_job_ids.add(task["args"][0])
+
+        for tasks in reserved.values():
+            for task in tasks:
+                if task.get("args") and len(task["args"]) > 0:
+                    celery_job_ids.add(task["args"][0])
+
+        for tasks in scheduled.values():
+            for task in tasks:
+                if task.get("args") and len(task["args"]) > 0:
+                    celery_job_ids.add(task["args"][0])
+
+        orphaned_jobs = store.find_orphaned_jobs(celery_job_ids)
+
+        return {
+            "orphaned_count": len(orphaned_jobs),
+            "celery_active_count": len(celery_job_ids),
+            "orphaned_jobs": orphaned_jobs
+        }
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": str(e),
+                "message": "Failed to inspect Celery. Using fallback heartbeat detection.",
+                "orphaned_jobs": []
+            }
+        )
+
+
+@app.post("/jobs/cleanup")
+async def cleanup_jobs(method: str = "smart"):
+    """Clean up ghost jobs (orphaned or stale).
+
+    Two cleanup methods:
+    - 'smart' (default): Cross-reference with Celery - immediate detection, no waiting
+    - 'heartbeat': Use heartbeat timestamps - fallback when Celery unavailable
+
+    Args:
+        method: 'smart' or 'heartbeat' (default: smart)
+
+    Returns:
+        Number of jobs cleaned up
+    """
+    store = get_job_store()
+
+    if method == "smart":
+        # PRIMARY METHOD: Cross-reference with Celery
+        try:
+            inspect = celery_app.control.inspect(timeout=2)
+            active = inspect.active() or {}
+            reserved = inspect.reserved() or {}
+            scheduled = inspect.scheduled() or {}
+
+            # Extract job_ids from Celery
+            celery_job_ids = set()
+            for tasks in list(active.values()) + list(reserved.values()) + list(scheduled.values()):
+                for task in tasks:
+                    if task.get("args") and len(task["args"]) > 0:
+                        celery_job_ids.add(task["args"][0])
+
+            cleaned = store.cleanup_orphaned_jobs(celery_job_ids)
+
+            return {
+                "method": "smart",
+                "cleaned": cleaned,
+                "celery_active_count": len(celery_job_ids),
+                "message": f"Marked {cleaned} orphaned job(s) as failed (not in Celery)"
+            }
+
+        except Exception as e:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "method": "smart",
+                    "error": str(e),
+                    "message": "Celery unavailable. Use method=heartbeat or try again later."
+                }
+            )
+
+    elif method == "heartbeat":
+        # FALLBACK METHOD: Use heartbeat timestamps
+        cleaned = store.cleanup_stale_jobs(stale_threshold_seconds=1800)
+        return {
+            "method": "heartbeat",
+            "cleaned": cleaned,
+            "threshold_seconds": 1800,
+            "message": f"Marked {cleaned} stale job(s) as failed (heartbeat timeout)"
+        }
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid method. Use 'smart' or 'heartbeat'"
+        )
 
 
 @app.post(

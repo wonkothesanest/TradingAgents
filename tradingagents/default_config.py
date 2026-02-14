@@ -17,8 +17,8 @@ DEFAULT_CONFIG = {
     "google_thinking_level": "minimal",      # "high", "minimal", etc.
     "openai_reasoning_effort": "low",    # "medium", "high", "low"
     # Debate and discussion settings
-    "max_debate_rounds": 1,
-    "max_risk_discuss_rounds": 1,
+    "max_debate_rounds": 2,
+    "max_risk_discuss_rounds": 2,
     "max_recur_limit": 100,
     # Data vendor configuration
     # Category-level configuration (default for all tools in category)

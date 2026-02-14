@@ -74,6 +74,7 @@ class JobStore:
             "created_at": now,
             "started_at": "",
             "completed_at": "",
+            "last_heartbeat": "",
             "error": "",
             "error_type": "",
             "retry_count": "0",
@@ -120,6 +121,7 @@ class JobStore:
             "created_at": job_data["created_at"],
             "started_at": job_data.get("started_at") or None,
             "completed_at": job_data.get("completed_at") or None,
+            "last_heartbeat": job_data.get("last_heartbeat") or None,
             "error": job_data.get("error") or None,
             "error_type": job_data.get("error_type") or None,
             "retry_count": int(job_data.get("retry_count", 0)),
@@ -166,6 +168,7 @@ class JobStore:
                 "created_at": job_data["created_at"],
                 "started_at": job_data.get("started_at") or None,
                 "completed_at": job_data.get("completed_at") or None,
+                "last_heartbeat": job_data.get("last_heartbeat") or None,
                 "error": job_data.get("error") or None,
                 "error_type": job_data.get("error_type") or None,
                 "retry_count": int(job_data.get("retry_count", 0)),
@@ -183,6 +186,171 @@ class JobStore:
         jobs.sort(key=lambda j: (status_order.get(j["status"], 999), j["created_at"]))
 
         return jobs
+
+    def update_heartbeat(self, job_id: str) -> None:
+        """Update job heartbeat timestamp.
+
+        Args:
+            job_id: Job identifier
+
+        Raises:
+            JobNotFoundError: If job ID does not exist
+        """
+        key = self._get_job_key(job_id)
+
+        if not self.redis.exists(key):
+            raise JobNotFoundError(job_id)
+
+        self.redis.hset(key, "last_heartbeat", datetime.now(timezone.utc).isoformat())
+
+    def find_orphaned_jobs(self, celery_active_job_ids: set) -> List[Dict[str, Any]]:
+        """Find jobs marked as 'running' but not actually running in Celery.
+
+        This is the PRIMARY detection method - much faster and more accurate than heartbeat.
+        Cross-references Redis job store with Celery's active tasks.
+
+        Args:
+            celery_active_job_ids: Set of job_ids currently in Celery (active/reserved/scheduled)
+
+        Returns:
+            List of orphaned job dictionaries
+        """
+        orphaned_jobs = []
+
+        for key in self.redis.scan_iter(match="tradingagents:job:*", count=1000):
+            job_data = self.redis.hgetall(key)
+
+            if not job_data:
+                continue
+
+            status = job_data.get("status")
+            if status != JobStatus.RUNNING:
+                continue
+
+            job_id = job_data.get("job_id")
+
+            # Job says it's running, but Celery doesn't know about it = GHOST
+            if job_id not in celery_active_job_ids:
+                job = self._parse_job_data(job_data)
+                job["orphaned_reason"] = "Job marked as running but not in Celery queue"
+                orphaned_jobs.append(job)
+
+        return orphaned_jobs
+
+    def find_stale_jobs(self, stale_threshold_seconds: int = 1800) -> List[Dict[str, Any]]:
+        """Find jobs stuck in 'running' state without recent heartbeat.
+
+        Args:
+            stale_threshold_seconds: Jobs running longer than this without heartbeat are stale.
+                                    Default: 1800 seconds (30 minutes)
+
+        Returns:
+            List of stale job dictionaries
+        """
+        stale_jobs = []
+        now = datetime.now(timezone.utc)
+
+        for key in self.redis.scan_iter(match="tradingagents:job:*", count=1000):
+            job_data = self.redis.hgetall(key)
+
+            if not job_data:
+                continue
+
+            status = job_data.get("status")
+            if status != JobStatus.RUNNING:
+                continue
+
+            # Check if job has a heartbeat
+            last_heartbeat_str = job_data.get("last_heartbeat")
+            if not last_heartbeat_str:
+                # No heartbeat ever - check how long it's been running
+                started_at_str = job_data.get("started_at")
+                if started_at_str:
+                    started_at = datetime.fromisoformat(started_at_str.replace("Z", "+00:00"))
+                    running_time = (now - started_at).total_seconds()
+                    if running_time > stale_threshold_seconds:
+                        job = self._parse_job_data(job_data)
+                        job["stale_reason"] = f"No heartbeat, running for {running_time:.0f}s"
+                        stale_jobs.append(job)
+            else:
+                # Has heartbeat - check how old it is
+                last_heartbeat = datetime.fromisoformat(last_heartbeat_str.replace("Z", "+00:00"))
+                heartbeat_age = (now - last_heartbeat).total_seconds()
+                if heartbeat_age > stale_threshold_seconds:
+                    job = self._parse_job_data(job_data)
+                    job["stale_reason"] = f"Heartbeat stale for {heartbeat_age:.0f}s"
+                    stale_jobs.append(job)
+
+        return stale_jobs
+
+    def _parse_job_data(self, job_data: Dict[str, str]) -> Dict[str, Any]:
+        """Parse job data from Redis hash.
+
+        Helper method to convert Redis string values to proper types.
+        """
+        return {
+            "job_id": job_data["job_id"],
+            "ticker": job_data["ticker"],
+            "date": job_data["date"],
+            "config": json.loads(job_data["config"]) if job_data.get("config") else None,
+            "status": job_data["status"],
+            "created_at": job_data["created_at"],
+            "started_at": job_data.get("started_at") or None,
+            "completed_at": job_data.get("completed_at") or None,
+            "last_heartbeat": job_data.get("last_heartbeat") or None,
+            "error": job_data.get("error") or None,
+            "error_type": job_data.get("error_type") or None,
+            "retry_count": int(job_data.get("retry_count", 0)),
+        }
+
+    def cleanup_orphaned_jobs(self, celery_active_job_ids: set) -> int:
+        """Mark orphaned jobs as failed (PRIMARY cleanup method).
+
+        Jobs marked as 'running' in Redis but not in Celery are orphaned
+        (worker crashed, was killed, or lost connection). Mark them as failed immediately.
+
+        Args:
+            celery_active_job_ids: Set of job_ids currently in Celery
+
+        Returns:
+            Number of jobs marked as failed
+        """
+        orphaned_jobs = self.find_orphaned_jobs(celery_active_job_ids)
+
+        for job in orphaned_jobs:
+            self.update_job_status(
+                job["job_id"],
+                JobStatus.FAILED,
+                error=f"Worker lost: {job.get('orphaned_reason', 'Not in Celery queue')}",
+                error_type="worker_lost"
+            )
+
+        return len(orphaned_jobs)
+
+    def cleanup_stale_jobs(self, stale_threshold_seconds: int = 1800) -> int:
+        """Mark stale running jobs as failed (BACKUP cleanup method).
+
+        Use this as a fallback when Celery inspection is unavailable.
+        Prefer cleanup_orphaned_jobs() which uses Celery as source of truth.
+
+        Args:
+            stale_threshold_seconds: Jobs running longer than this without heartbeat are stale.
+                                    Default: 1800 seconds (30 minutes)
+
+        Returns:
+            Number of jobs marked as failed
+        """
+        stale_jobs = self.find_stale_jobs(stale_threshold_seconds)
+
+        for job in stale_jobs:
+            self.update_job_status(
+                job["job_id"],
+                JobStatus.FAILED,
+                error=f"Job stale: {job.get('stale_reason', 'No heartbeat')}",
+                error_type="timeout"
+            )
+
+        return len(stale_jobs)
 
     def update_job_status(
         self,
