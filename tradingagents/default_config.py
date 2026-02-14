@@ -38,8 +38,8 @@ DEFAULT_CONFIG = {
     "celery_task_serializer": "json",
     "celery_result_serializer": "json",
     "celery_accept_content": ["json"],
-    "celery_task_time_limit": 1800,  # 30 minutes hard limit
-    "celery_task_soft_time_limit": 1500,  # 25 minutes soft limit
+    "celery_task_time_limit": 2700,  # 45 minutes hard limit
+    "celery_task_soft_time_limit": 2400,  # 40 minutes soft limit
     "celery_worker_prefetch_multiplier": 1,
     "celery_result_expires": 3600,  # 1 hour
 }

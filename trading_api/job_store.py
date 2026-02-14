@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from redis import Redis
-from trading_api.models import JobStatus
+from trading_api.models import ErrorType, JobStatus
 from trading_api.exceptions import JobNotFoundError
 
 
@@ -322,7 +322,7 @@ class JobStore:
                 job["job_id"],
                 JobStatus.FAILED,
                 error=f"Worker lost: {job.get('orphaned_reason', 'Not in Celery queue')}",
-                error_type="worker_lost"
+                error_type=ErrorType.WORKER_LOST
             )
 
         return len(orphaned_jobs)

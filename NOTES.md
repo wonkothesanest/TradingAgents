@@ -1,3 +1,9 @@
+# Investigations
+Possibly a problem with parallel executions of Ollama models.
+  Can't seem to get multiple ollama ticker requests to run at the same time. Might be a problem with the ollama setup, everything else like celery looks like it is properly parallized.
+  Might want to add on a ticker optional param to the URL call to ollama so that it is easier to view what is beign called in the logs.
+  Also ollama graphics memory is not double when two are running.
+
 # Ideas
 The costs of this tool are high
 We would need to do comparisons of input / output of utilizing gpt 5 models vs local models and see what the overall take aways are and if there is much of a difference.

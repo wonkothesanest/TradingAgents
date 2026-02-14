@@ -20,6 +20,7 @@ class ErrorType(str, Enum):
     TIMEOUT = "timeout"
     LLM_ERROR = "llm_error"
     DATA_ERROR = "data_error"
+    WORKER_LOST = "worker_lost"
     INVALID_CONFIG = "invalid_config"
     UNKNOWN = "unknown"
 
