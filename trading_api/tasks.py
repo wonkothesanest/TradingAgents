@@ -15,6 +15,7 @@ from trading_api.models import ErrorType, JobStatus
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.dataflows.alpha_vantage_common import AlphaVantageRateLimitError
+from tradingagents.utils.report_writer import save_report_to_disk
 
 # API exceptions
 from trading_api.exceptions import TradingAgentsExecutionError
@@ -108,7 +109,7 @@ def analyze_stock(
         print(f"Task {self.request.id}: Initializing TradingAgentsGraph with config: {merged_config.get('llm_provider')}/{merged_config.get('deep_think_llm')}")
 
         # Instantiate TradingAgentsGraph
-        ta = TradingAgentsGraph(debug=False, config=merged_config)
+        ta = TradingAgentsGraph(debug=True, config=merged_config)
 
         # Execute propagate - returns (final_state, decision) tuple
         print(f"Task {self.request.id}: Starting propagate() for {ticker} on {date}")
@@ -121,6 +122,12 @@ def analyze_stock(
         ticker_dir = results_base / ticker / date.replace("-", "")
         ticker_dir.mkdir(parents=True, exist_ok=True)
 
+        # Write comprehensive reports using shared utility (same as CLI)
+        print(f"Task {self.request.id}: Writing comprehensive reports to {ticker_dir}")
+        complete_report_path = save_report_to_disk(final_state, ticker, ticker_dir)
+        print(f"Task {self.request.id}: Complete report written to {complete_report_path}")
+
+        # Also write legacy files for backward compatibility
         # Write full state dict
         state_file = ticker_dir / "state.json"
         with open(state_file, "w") as f:
@@ -131,7 +138,7 @@ def analyze_stock(
         with open(decision_file, "w") as f:
             f.write(decision)
 
-        # Extract individual analyst reports from final_state
+        # Extract all reports from final_state (including research, trading, risk)
         reports = {
             "market": final_state.get("market_report", ""),
             "sentiment": final_state.get("sentiment_report", ""),
@@ -139,11 +146,23 @@ def analyze_stock(
             "fundamentals": final_state.get("fundamentals_report", ""),
         }
 
-        # Write individual reports
-        for report_name, content in reports.items():
-            report_file = ticker_dir / f"{report_name}_report.txt"
-            with open(report_file, "w") as f:
-                f.write(content)
+        # Add research team reports if available
+        if final_state.get("investment_debate_state"):
+            debate = final_state["investment_debate_state"]
+            reports["bull_researcher"] = debate.get("bull_history", "")
+            reports["bear_researcher"] = debate.get("bear_history", "")
+            reports["research_manager"] = debate.get("judge_decision", "")
+
+        # Add trading team report
+        reports["trader"] = final_state.get("trader_investment_plan", "")
+
+        # Add risk management reports if available
+        if final_state.get("risk_debate_state"):
+            risk = final_state["risk_debate_state"]
+            reports["aggressive_analyst"] = risk.get("aggressive_history", "")
+            reports["conservative_analyst"] = risk.get("conservative_history", "")
+            reports["neutral_analyst"] = risk.get("neutral_history", "")
+            reports["portfolio_manager"] = risk.get("judge_decision", "")
 
         print(f"Task {self.request.id}: Results written to {ticker_dir}")
 

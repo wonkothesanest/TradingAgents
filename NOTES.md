@@ -5,12 +5,16 @@ Possibly a problem with parallel executions of Ollama models.
   Also ollama graphics memory is not double when two are running.
 
 # Ideas
-The costs of this tool are high
-We would need to do comparisons of input / output of utilizing gpt 5 models vs local models and see what the overall take aways are and if there is much of a difference.
+DONE: The costs of this tool are high
+  We would need to do comparisons of input / output of utilizing gpt 5 models vs local models and see what the overall take aways are and if there is much of a difference.
+    Found: the smaller local models actually run almost as fast and have just as good results (1-3 stock side by side tests). Less hallucinations according to gpt.
 
-Remove results form the github
+DONE: Remove results form the github
 
 How does this fit in our overall workflow?
+
+Add traefik configurations for API. 
+
 
 # HOst setup
 Had to install nvidia container toolkit
