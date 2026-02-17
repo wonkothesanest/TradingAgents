@@ -51,7 +51,7 @@ services:
     container_name: tradingagents-worker
     ports:
       - "8124:8000"
-    command: celery -A trading_api.celery_app worker --loglevel=info --concurrency=2 --time-limit=1800 --soft-time-limit=1500 --max-tasks-per-child=50
+    command: celery -A trading_api.celery_app worker --loglevel=info --concurrency=${CELERY_WORKER_CONCURRENCY} --time-limit=${CELERY_WORKER_TIMEOUT} --soft-time-limit=${CELERY_WORKER_SOFT_TIMEOUT} --max-tasks-per-child=${CELERY_WORKER_MAX_TASKS_PER_CHILD}
     env_file:
       - .env
     environment:
@@ -59,6 +59,10 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - REDIS_HOST=redis
       - OLLAMA_BASE_URL=http://ollama:11434
+      - LANGSMITH_TRACING=true
+      - LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
+      - LANGSMITH_PROJECT="trade-goblin-trading-agents"
     depends_on:
       redis:
         condition: service_healthy
@@ -67,6 +71,8 @@ services:
     volumes:
       - ./results:/data/results
       - ./tradingagents/dataflows/data_cache:/app/tradingagents/dataflows/data_cache
+      - ./reports:/data/reports
+      - ./eval_results:/data/eval_results
     restart: unless-stopped
     networks:
       - tradingagents
@@ -85,7 +91,7 @@ services:
     ports:
       - "11535:11434"
     volumes:
-      - ollama_models:/root/.ollama
+      - /home/dusty/workspace/ollama/models:/root/.ollama/models
     restart: unless-stopped
     networks:
       - tradingagents

@@ -166,6 +166,11 @@ def analyze_stock(
 
         print(f"Task {self.request.id}: Results written to {ticker_dir}")
 
+        # Get that well formatted complete report content
+        if complete_report_path:
+            with open(complete_report_path, "r") as f:
+                reports["complete_report"] = f.read()
+        
         # Convert final_state to JSON-serializable format
         # Use json.loads(json.dumps()) with default=str to handle non-serializable objects
         serializable_state = json.loads(

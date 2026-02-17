@@ -8,7 +8,7 @@ from dateutil.relativedelta import relativedelta
 def _extract_article_data(article: dict) -> dict:
     """Extract article data from yfinance news format (handles nested 'content' structure)."""
     # Handle nested content structure
-    if "content" in article:
+    if "content" in article and article["content"] is not None:
         content = article["content"]
         title = content.get("title", "No title")
         summary = content.get("summary", "")

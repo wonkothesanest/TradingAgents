@@ -129,7 +129,7 @@ def get_vendor(category: str, method: str = None) -> str:
             return tool_vendors[method]
 
     # Fall back to category-level configuration
-    return config.get("data_vendors", {}).get(category, "default")
+    return config.get("data_vendors", {}).get(category, "yfinance")
 
 def route_to_vendor(method: str, *args, **kwargs):
     """Route method calls to appropriate vendor implementation with fallback support."""

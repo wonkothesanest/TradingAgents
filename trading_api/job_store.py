@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional, List
 from redis import Redis
 from trading_api.models import ErrorType, JobStatus
 from trading_api.exceptions import JobNotFoundError
+from tradingagents.utils import report_writer
 
 
 class JobStore:
@@ -515,8 +516,16 @@ class JobStore:
         result_json = self.redis.hget(key, "result")
         if not result_json:
             raise ValueError(f"Job {job_id} has no result data")
+        
 
-        return json.loads(result_json)
+
+        final_state = json.loads(result_json)
+        report_location = report_writer.write_reports(final_state["final_state"], job_id)
+        if report_location:
+            with open(report_location, "r") as f:
+                final_state["complete_report"] = f.read()
+        return final_state
+    
 
 
 # Global job store instance
